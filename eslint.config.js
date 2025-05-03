@@ -79,7 +79,6 @@ export default tseslint.config(
 				{ blankLine: "always", prev: "block-like", next: "*" },
 			],
 			"import/no-unresolved": "off",
-			"import/extensions": ["error", "ignorePackages", { js: "never", jsx: "never", ts: "never", tsx: "never" }],
 			"import/order": [
 				"warn",
 				{
