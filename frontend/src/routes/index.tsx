@@ -63,7 +63,7 @@ function SimulationConnectionStatus({ isConnected }: { isConnected: boolean }) {
 	if (isConnected) return null;
 
 	return (
-		<div className="h-screen w-screen flex items-center justify-center flex-col bg-slate-900 text-slate-200 font-sans">
+		<div className="h-screen flex items-center justify-center flex-col bg-slate-900 text-slate-200 font-sans">
 			<div className="w-16 h-16 border-4 border-slate-700 border-t-sky-400 rounded-full animate-spin mb-4" />
 			<div className="text-xl font-medium">Connecting to simulation server...</div>
 		</div>

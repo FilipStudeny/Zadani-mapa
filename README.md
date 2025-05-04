@@ -1,4 +1,8 @@
 # How to run
+
+![](/images/img_01.PNG)
+![](/images/img_02.PNG)
+
 ## 1. Install dependencies
 
 ### Backend
