@@ -1,27 +1,32 @@
-
-import { drawEntityPath } from "@/utils/functions/mapUtils";
-
 import { createFileRoute } from "@tanstack/react-router";
+import {
+	MapIcon,
+	SlidersHorizontal,
+	List,
+	Crosshair,
+	ScrollText,
+} from "lucide-react";
 import { Map } from "ol";
 import { Feature } from "ol";
 import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import { Mosaic, MosaicWindow } from "react-mosaic-component";
 
 import type { Entity } from "@/utils/Entities/Entity";
-import "react-mosaic-component/react-mosaic-component.css";
-
 import type { PanelId } from "@/utils/Entities/PanelId";
 import type { Geometry } from "ol/geom";
 
-import { ControlPanel } from "@/components/ControlPanel";
-import { DistanceMeasurementModal } from "@/components/DistanceMeasurementModal";
-import { EntityListPanel } from "@/components/EntityListPanel";
-import { LogPanel } from "@/components/LogPanel";
-import { SimulationMap } from "@/components/SimulationMap";
-import { UnitInfoPanel } from "@/components/UnitInfoPanel";
+import { ControlPanel } from "@/features/ControlPanel";
+import { DistanceMeasurementModal } from "@/features/DistanceMeasurementModal";
+import { EntityListPanel } from "@/features/EntityListPanel";
+import { LogPanel } from "@/features/LogPanel";
+import { SimulationMap } from "@/features/SimulationMap";
+import { UnitInfoPanel } from "@/features/UnitInfoPanel";
 import { useSimulationSocket } from "@/hooks/useSimulationSocket";
+import { drawEntityPath } from "@/utils/functions/mapUtils";
+
+import "react-mosaic-component/react-mosaic-component.css";
 
 export const Route = createFileRoute("/")({ component: App });
 
@@ -46,6 +51,25 @@ const initialLayout = {
 	second: "log",
 } as const;
 
+const panelTitles: Record<PanelId, { icon: JSX.Element, label: string }> = {
+	map: { icon: <MapIcon size={16} />, label: "Map" },
+	controls: { icon: <SlidersHorizontal size={16} />, label: "Controls" },
+	entities: { icon: <List size={16} />, label: "Entities" },
+	unitInfo: { icon: <Crosshair size={16} />, label: "Unit Info" },
+	log: { icon: <ScrollText size={16} />, label: "Log" },
+};
+
+function SimulationConnectionStatus({ isConnected }: { isConnected: boolean }) {
+	if (isConnected) return null;
+
+	return (
+		<div className="h-screen w-screen flex items-center justify-center flex-col bg-slate-900 text-slate-200 font-sans">
+			<div className="w-16 h-16 border-4 border-slate-700 border-t-sky-400 rounded-full animate-spin mb-4" />
+			<div className="text-xl font-medium">Connecting to simulation server...</div>
+		</div>
+	);
+}
+
 function App() {
 	const mapRef = useRef<HTMLDivElement>(null);
 	const mapObj = useRef<Map | null>(null);
@@ -68,44 +92,15 @@ function App() {
 		simulationTime,
 	} = useSimulationSocket(mapObj.current, entitySource.current);
 
-	if (!isConnected) {
-		return (
-			<div
-				style={{
-					height: "100vh",
-					width: "100vw",
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "center",
-					flexDirection: "column",
-					backgroundColor: "#0f172a",
-					color: "#e2e8f0",
-					fontFamily: "sans-serif",
-				}}
-			>
-				<div
-					style={{
-						width: 60,
-						height: 60,
-						border: "6px solid #334155",
-						borderTop: "6px solid #38bdf8",
-						borderRadius: "50%",
-						animation: "spin 1s linear infinite",
-						marginBottom: 20,
-					}}
-				/>
-				<div style={{ fontSize: "1.5rem", fontWeight: 500 }}>
-					Connecting to simulation server...
-				</div>
-				<style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
-			</div>
-		);
-	}
+	useEffect(() => {
+		const handleKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") setShowDistanceModal(false);
+		};
+
+		window.addEventListener("keydown", handleKey);
+
+		return () => window.removeEventListener("keydown", handleKey);
+	}, []);
 
 	const renderPanel = (id: PanelId) => {
 		switch (id) {
@@ -131,6 +126,7 @@ function App() {
 						simulationTime={simulationTime}
 					/>
 				);
+
 			case "entities":
 				return (
 					<EntityListPanel
@@ -143,32 +139,57 @@ function App() {
 						}}
 					/>
 				);
+
 			case "unitInfo":
 				return <UnitInfoPanel selectedUnit={selectedUnit} />;
+
 			case "log":
 				return <LogPanel log={log} />;
 		}
 	};
 
 	return (
-		<div style={{ height: "100vh" }}>
-			<Mosaic<PanelId>
-				renderTile={(id, path) => (
-					<MosaicWindow<PanelId> path={path} title={id.toUpperCase()}>
-						{renderPanel(id)}
-					</MosaicWindow>
-				)}
-				initialValue={initialLayout}
-			/>
+		<div className="h-screen bg-gray-100">
+			<SimulationConnectionStatus isConnected={isConnected} />
 
-			{showDistanceModal && (
-				<DistanceMeasurementModal
-					entities={entities}
-					selected={selectedForDistance}
-					setSelected={setSelectedForDistance}
-					onClose={() => setShowDistanceModal(false)}
-					pathSource={pathSource}
-				/>
+			{isConnected && (
+				<>
+					<Mosaic<PanelId>
+						renderTile={(id, path) => (
+							<MosaicWindow<PanelId>
+								path={path}
+								title=" "
+								createNode={() => id}
+								renderToolbar={() => (
+									<div className="flex items-center gap-2 px-3 py-1 font-medium text-sm text-gray-800">
+										{panelTitles[id].icon}
+										<span>{panelTitles[id].label}</span>
+									</div>
+								)}
+							>
+								{renderPanel(id)}
+							</MosaicWindow>
+						)}
+						initialValue={initialLayout}
+					/>
+
+					{showDistanceModal && (
+						<DistanceMeasurementModal
+							entities={entities}
+							selected={selectedForDistance}
+							setSelected={(sel) => {
+								setSelectedForDistance(sel);
+								if (sel.length === 2) {
+									logMsg(
+										`Measuring distance between ${sel[0].callsign} and ${sel[1].callsign}`,
+									);
+								}
+							}}
+							onClose={() => setShowDistanceModal(false)}
+							pathSource={pathSource}
+						/>
+					)}
+				</>
 			)}
 		</div>
 	);

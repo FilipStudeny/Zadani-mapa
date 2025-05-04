@@ -1,13 +1,25 @@
-export interface Entity {
-	callsign: string,
-	type: string,
+export type EntityType = "infantry" | "tank" | "recon";
+export type EntitySide = "ally" | "enemy";
+
+export interface Coord {
 	lat: number,
 	lon: number,
-	path: { lat: number, lon: number }[],
+}
+
+export interface Entity {
+	callsign: string,
+	type: EntityType,
+	side: EntitySide,
+
+	lat: number,
+	lon: number,
+	path: Coord[],
+
 	active: boolean,
-	speed?: number,
-	heading?: number,
-	loop?: boolean,
-	ammo?: number,
-	health?: number,
+	loop: boolean,
+
+	speed: number,
+	heading: number,
+	ammo: number,
+	health: number,
 }

@@ -11,6 +11,7 @@ import type VectorSource from "ol/source/Vector";
 
 import { createEntityFeature } from "@/utils/functions/createEntityFeature";
 import { fitMapToEntities } from "@/utils/functions/mapUtils";
+import { formatTime } from "@/utils/functions/time";
 
 interface UseSimulationSocketResult {
 	socketRef: React.RefObject<Socket | null>,
@@ -25,7 +26,7 @@ interface UseSimulationSocketResult {
 export function useSimulationSocket(
 	map: Map | null,
 	entitySource: VectorSource<Feature<Geometry>>,
-	socketUrl: string = "ws://localhost:9999",
+	socketUrl = "ws://localhost:9999",
 ): UseSimulationSocketResult {
 	const socketRef = useRef<Socket | null>(null);
 	const [log, setLog] = useState<string[]>(["[00:00:00] Sim start"]);
@@ -34,14 +35,6 @@ export function useSimulationSocket(
 	const [simulationTime, setSimulationTime] = useState(0);
 
 	const logMsg = (msg: string) => {
-		const formatTime = (seconds: number) => {
-			const hrs = String(Math.floor(seconds / 3600)).padStart(2, "0");
-			const mins = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
-			const secs = String(seconds % 60).padStart(2, "0");
-
-			return `${hrs}:${mins}:${secs}`;
-		};
-
 		setLog((prev) => [...prev, `[${formatTime(simulationTime)}] ${msg}`]);
 	};
 
@@ -49,10 +42,10 @@ export function useSimulationSocket(
 		const socket = io(socketUrl);
 		socketRef.current = socket;
 
-		const handleConnect = () => setIsConnected(true);
-		const handleDisconnect = () => setIsConnected(false);
+		socket.on("connect", () => setIsConnected(true));
+		socket.on("disconnect", () => setIsConnected(false));
 
-		const handleEntityCreated = (entity: Entity) => {
+		socket.on("entityCreated", (entity: Entity) => {
 			setEntities((prev) => {
 				if (prev.some((e) => e.callsign === entity.callsign)) return prev;
 
@@ -68,70 +61,58 @@ export function useSimulationSocket(
 
 				return [...prev, entity];
 			});
-		};
+		});
 
-		const handleEntityUpdated = ({
-			callsign,
-			lat,
-			lon,
-			heading,
-		}: Pick<Entity, "callsign" | "lat" | "lon" | "heading">) => {
+		socket.on("entityUpdated", (update: Entity) => {
 			const feature = entitySource.getFeatures().find(
-				(f) => f.get("entity")?.callsign === callsign,
+				(f) => f.get("entity")?.callsign === update.callsign,
 			);
 
 			if (feature) {
 				const geom = feature.getGeometry();
 				if (geom instanceof Point) {
-					geom.setCoordinates(fromLonLat([lon, lat]));
+					geom.setCoordinates(fromLonLat([update.lon, update.lat]));
 				}
 
-				const e = feature.get("entity") as Entity;
-				if (e) {
-					e.lat = lat;
-					e.lon = lon;
-					e.heading = heading;
-					feature.set("entity", e);
-					feature.setStyle(createEntityFeature(e).getStyle());
-				}
+				feature.set("entity", update);
+				feature.setStyle(createEntityFeature(update).getStyle());
 			}
-		};
 
-		const handleTimeUpdate = (time: number) => {
-			setSimulationTime(time);
-		};
+			setEntities((prev) =>
+				prev.map((e) => (e.callsign === update.callsign ? update : e)),
+			);
+		});
 
-		type LogPayload = { msg: string, time: number };
+		socket.on("entityDestroyed", ({ callsign }: { callsign: string }) => {
+			const feature = entitySource.getFeatures().find(
+				(f) => f.get("entity")?.callsign === callsign,
+			);
 
-		const handleLog = ({ msg, time }: LogPayload) => {
-			const formatTime = (seconds: number) => {
-				const hrs = String(Math.floor(seconds / 3600)).padStart(2, "0");
-				const mins = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
-				const secs = String(seconds % 60).padStart(2, "0");
+			if (feature) {
+				const entity = feature.get("entity") as Entity;
+				entity.active = false;
+				feature.set("entity", entity);
+				feature.setStyle(createEntityFeature(entity).getStyle());
+			}
 
-				return `${hrs}:${mins}:${secs}`;
-			};
+			setEntities((prev) =>
+				prev.map((e) =>
+					e.callsign === callsign ? { ...e, active: false } : e,
+				),
+			);
+		});
 
+		socket.on("log", ({ msg, time }: { msg: string, time: number }) => {
 			setLog((prev) => [...prev, `[${formatTime(time)}] ${msg}`]);
-		};
+		});
 
-		socket.on("connect", handleConnect);
-		socket.on("disconnect", handleDisconnect);
-		socket.on("entityCreated", handleEntityCreated);
-		socket.on("entityUpdated", handleEntityUpdated);
-		socket.on("log", handleLog);
-		socket.on("timeUpdate", handleTimeUpdate);
+		socket.on("timeUpdate", setSimulationTime);
 
 		return () => {
-			socket.off("connect", handleConnect);
-			socket.off("disconnect", handleDisconnect);
-			socket.off("entityCreated", handleEntityCreated);
-			socket.off("entityUpdated", handleEntityUpdated);
-			socket.off("log", handleLog);
-			socket.off("timeUpdate", handleTimeUpdate);
 			socket.disconnect();
+			socketRef.current = null;
 		};
-	}, [map, entitySource, simulationTime]);
+	}, [entitySource]);
 
 	return {
 		socketRef,
